@@ -198,7 +198,7 @@ You can check if the application is running by viewing the log:
 tail -f app.log
 ```
 
-### 5. **Configure a Reverse Proxy (Optional)**
+### 5. **Configure a Reverse Proxy with NGINX (Optional)**
 
 If you want your application to be accessible via a domain name or over port `80` (HTTP), you can set up a **reverse proxy** using **Nginx** or **Apache**.
 
