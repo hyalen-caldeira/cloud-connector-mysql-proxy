@@ -17,8 +17,11 @@ import us.hyalen.mysql_proxy.core.dto.ResponseDto;
 
 @Slf4j
 @ControllerAdvice
-@AllArgsConstructor
 public class GlobalExceptionHandler {
+    public GlobalExceptionHandler(ErrorCodeConfig errorCodeConfig) {
+        this.errorCodeConfig = errorCodeConfig;
+    }
+
     private final ErrorCodeConfig errorCodeConfig;
 
     @ResponseBody
@@ -72,12 +75,6 @@ public class GlobalExceptionHandler {
                 HttpStatus.valueOf(errorCodeConfig.getBadSqlGrammarHttp())
         );
     }
-
-    // Handle generic exceptions
-//    @ExceptionHandler(Exception.class)
-//    public ResponseEntity<String> handleGlobalException(Exception ex, WebRequest request) {
-//        return new ResponseEntity<>("An error occurred: " + ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
-//    }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ResponseDto<Void>> handleGlobalException(Exception ex, WebRequest request) {

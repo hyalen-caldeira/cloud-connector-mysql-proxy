@@ -8,12 +8,22 @@ import us.hyalen.mysql_proxy.core.dto.ErrorDto;
 
 import java.util.List;
 
-@Getter
-@AllArgsConstructor
-@Builder
 public class ClientException extends RuntimeException {
     private final List<ErrorDto> errorDtos;
     private final HttpStatus httpStatus;
+
+    public HttpStatus getHttpStatus() {
+        return httpStatus;
+    }
+
+    public ClientException(List<ErrorDto> errorDtos, HttpStatus httpStatus) {
+        this.errorDtos = errorDtos;
+        this.httpStatus = httpStatus;
+    }
+
+    public List<ErrorDto> getErrorDtos() {
+        return errorDtos;
+    }
 
     public static ClientException create(List<ErrorDto> errors, HttpStatus httpStatus) {
         switch (httpStatus) {
