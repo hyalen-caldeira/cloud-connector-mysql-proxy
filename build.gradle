@@ -10,12 +10,9 @@ version = '0.0.1-SNAPSHOT'
 java {
 	// Use Java 22 for development
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(22)
+		languageVersion = JavaLanguageVersion.of(8)
 	}
 
-	// Compile to Java 1.8 compatibility
-	sourceCompatibility = JavaVersion.VERSION_1_8
-	targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 configurations {
