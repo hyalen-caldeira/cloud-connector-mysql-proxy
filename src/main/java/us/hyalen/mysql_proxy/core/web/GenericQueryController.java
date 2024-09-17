@@ -3,6 +3,7 @@ package us.hyalen.mysql_proxy.core.web;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import us.hyalen.mysql_proxy.config.enums.DBType;
 import us.hyalen.mysql_proxy.core.dto.GenericQueryRequestDto;
 import us.hyalen.mysql_proxy.core.dto.ResponseDto;
 import us.hyalen.mysql_proxy.core.service.GenericQueryService;
@@ -22,8 +23,12 @@ public class GenericQueryController {
     }
 
     @GetMapping(value = "/execute-query", produces = "application/json")
-    public ResponseEntity<ResponseDto<Object>> executeQuery(@RequestParam String query) {
-        Object result = service.executeGenericQuery(query);
+    public ResponseEntity<ResponseDto<Object>> executeQuery(
+            @RequestParam String query,
+            @RequestHeader("DB-Type") String dbType) {
+        DBType dbTypeEnum = DBType.fromString(dbType);
+
+        Object result = service.executeGenericQuery(query, dbTypeEnum);
 
         // If result is a list (SELECT query), we assume it's List<Map<String, Object>>
         if (result instanceof List) {
@@ -36,8 +41,12 @@ public class GenericQueryController {
     }
 
     @PostMapping(value = "/execute-query", produces = "application/json")
-    public ResponseEntity<ResponseDto<Object>> executeQuery(@RequestBody GenericQueryRequestDto request) {
-        Object result = service.executeGenericQuery(request.getQuery());
+    public ResponseEntity<ResponseDto<Object>> executeQuery(
+            @RequestBody GenericQueryRequestDto request,
+            @RequestHeader("DB-Type") String dbType) {
+        DBType dbTypeEnum = DBType.fromString(dbType);
+
+        Object result = service.executeGenericQuery(request.getQuery(), dbTypeEnum);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)

@@ -1,7 +1,9 @@
 package us.hyalen.mysql_proxy.core.service;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import us.hyalen.mysql_proxy.config.enums.DBType;
 import us.hyalen.mysql_proxy.core.ResourceNotFoundException;
 
 import java.util.List;
@@ -9,14 +11,24 @@ import java.util.Map;
 
 @Service
 public class GenericQueryServiceImpl implements GenericQueryService {
-    private final JdbcTemplate jdbcTemplate;
+    private final JdbcTemplate mysqlJdbcTemplate;
+    private final JdbcTemplate singleStoreJdbcTemplate;
+    // private final JdbcTemplate otherJdbcTemplate;
 
-    public GenericQueryServiceImpl(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public GenericQueryServiceImpl(
+            @Qualifier("mysqlJdbcTemplate") JdbcTemplate mysqlJdbcTemplate,
+            @Qualifier("singleStoreJdbcTemplate") JdbcTemplate singleStoreJdbcTemplate
+            //, @Qualifier("otherJdbcTemplate") JdbcTemplate otherJdbcTemplate
+    ) {
+        this.mysqlJdbcTemplate = mysqlJdbcTemplate;
+        this.singleStoreJdbcTemplate = singleStoreJdbcTemplate;
+        // this.otherJdbcTemplate = otherJdbcTemplate;
     }
 
     @Override
-    public Object executeGenericQuery(String query) {
+    public Object executeGenericQuery(String query, DBType dbType) {
+        JdbcTemplate jdbcTemplate = decideJdbcTemplate(dbType);
+
         query = query.trim().toUpperCase();  // Normalize query
 
         if (query.startsWith("SELECT")) {
@@ -37,6 +49,19 @@ public class GenericQueryServiceImpl implements GenericQueryService {
             // For any other type of query (like DDL), just execute it
             jdbcTemplate.execute(query);
             return null;
+        }
+    }
+
+    private JdbcTemplate decideJdbcTemplate(DBType dbType) {
+        switch (dbType) {
+            case MYSQL:
+                return mysqlJdbcTemplate;
+            case SINGLE_STORE:
+                return singleStoreJdbcTemplate;
+            // case OTHER:
+            //     return otherJdbcTemplate;
+            default:
+                throw new IllegalArgumentException("Invalid DB type: " + dbType);
         }
     }
 }

@@ -1,6 +1,10 @@
-# DB Proxy API to Manage Database
+# DB Proxy API
 
 ---
+## Git - Branches
+* master
+  * Downgraded to Java 8 - Branch name: downgrade
+    * Multiple vendors - Branch name: many-vendors
 
 ## Directory Structures
 * config
