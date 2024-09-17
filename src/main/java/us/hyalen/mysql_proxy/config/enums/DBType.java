@@ -2,8 +2,8 @@ package us.hyalen.mysql_proxy.config.enums;
 
 public enum DBType {
     MYSQL,
-    SINGLE_STORE,
-    OTHER_DB;  // Add more as needed
+    SINGLESTORE_DEV,
+    SINGLESTORE_QA;
 
     public static DBType fromString(String dbType) {
         try {

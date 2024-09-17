@@ -1,77 +1,74 @@
 package us.hyalen.mysql_proxy.config;
 
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
+
 import javax.sql.DataSource;
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 public class DataSourceConfig {
-    @Value("${mysql.datasource.url}")
-    private String mysqlUrl;
-    @Value("${mysql.datasource.username}")
-    private String mysqlUsername;
-    @Value("${mysql.datasource.password}")
-    private String mysqlPassword;
-    @Value("${mysql.datasource.driver-class-name}")
-    private String mysqlDriverClassName;
 
-    @Value("${singlestore.datasource.url}")
-    private String singleStoreUrl;
+    @Autowired
+    private Environment env;
 
-    @Value("${singlestore.datasource.username}")
-    private String singleStoreUsername;
+    @Bean
+    public DataSource dynamicDataSource() {
+        Map<Object, Object> dataSourceMap = new HashMap<>();
 
-    @Value("${singlestore.datasource.password}")
-    private String singleStorePassword;
+        // Get all the data source keys defined in the application.properties
+        String[] dataSourceKeys = env.getProperty("datasources.keys", "").split(",");
 
-    @Value("${singlestore.datasource.driver-class-name}")
-    private String singleStoreDriverClassName;
+        for (String key : dataSourceKeys) {
+            // Trim and skip empty keys
+            key = key.trim();
 
-    @Bean(name = "mysqlDataSource")
-    public DataSource mysqlDataSource() {
-        return DataSourceBuilder.create()
-                .url(mysqlUrl)
-                .username(mysqlUsername)
-                .password(mysqlPassword)
-                .driverClassName(mysqlDriverClassName)
-                .build();
+            if (!key.isEmpty()) {
+                // Create the DataSource using the properties
+                String url = env.getProperty("datasources." + key + ".url");
+                String username = env.getProperty("datasources." + key + ".username");
+                String password = env.getProperty("datasources." + key + ".password");
+                String driverClassName = env.getProperty("datasources." + key + ".driver-class-name");
+
+                DataSource dataSource = DataSourceBuilder.create()
+                        .url(url)
+                        .username(username)
+                        .password(password)
+                        .driverClassName(driverClassName)
+                        .build();
+
+                // Add the data source to the map with the key
+                dataSourceMap.put(key.toUpperCase(), dataSource);
+            }
+        }
+
+        // Create a RoutingDataSource to switch between the data sources
+        AbstractRoutingDataSource routingDataSource = new AbstractRoutingDataSource() {
+            @Override
+            protected Object determineCurrentLookupKey() {
+                return DataSourceContextHolder.getDataSourceKey();
+            }
+        };
+
+        routingDataSource.setTargetDataSources(dataSourceMap);
+
+        // Set a default data source if necessary
+        if (dataSourceMap.containsKey("MYSQL"))
+            routingDataSource.setDefaultTargetDataSource(dataSourceMap.get("MYSQL"));
+
+        routingDataSource.afterPropertiesSet(); // Ensure routingDataSource is correctly initialized
+
+        return routingDataSource;
     }
 
-    @Bean(name = "singleStoreDataSource")
-    public DataSource singlestoreDataSource() {
-        return DataSourceBuilder.create()
-                .url(singleStoreUrl) // Update with SingleStore DB URL
-                .username(singleStoreUsername) // Update with SingleStore username
-                .password(singleStorePassword) // Update with SingleStore password
-                .driverClassName(singleStoreDriverClassName)
-                .build();
+    @Bean
+    public JdbcTemplate jdbcTemplate() {
+        return new JdbcTemplate(dynamicDataSource());
     }
-
-    // Bean(name = "otherDataSource")
-    // public DataSource otherDataSource() {
-    //     return DataSourceBuilder.create()
-    //             .url(otherUrl)
-    //             .username(otherUsername)
-    //             .password(otherPassword)
-    //             .driverClassName(otherDriverClassName)
-    //             .build();
-
-    @Bean(name = "mysqlJdbcTemplate")
-    public JdbcTemplate mysqlJdbcTemplate(@Qualifier("mysqlDataSource") DataSource dataSource) {
-        return new JdbcTemplate(dataSource);
-    }
-
-    @Bean(name = "singleStoreJdbcTemplate")
-    public JdbcTemplate singleStoreJdbcTemplate(@Qualifier("singleStoreDataSource") DataSource dataSource) {
-        return new JdbcTemplate(dataSource);
-    }
-
-    // @Bean(name = "otherJdbcTemplate")
-    // public JdbcTemplate otherJdbcTemplate(@Qualifier("otherDataSource") DataSource dataSource) {
-    //     return new JdbcTemplate(dataSource);
-    // }
 }
