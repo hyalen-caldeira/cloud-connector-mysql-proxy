@@ -5,6 +5,7 @@
 * master
   * Downgraded to Java 8 - Branch name: downgrade
     * Multiple vendors - Branch name: many-vendors
+      * Generic SQL - Branch name: generic-sql-dto
 
 ## Postman
 * Header
