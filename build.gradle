@@ -30,6 +30,7 @@ dependencies {
 	implementation 'org.apache.commons:commons-lang3:3.12.0'
 	implementation 'com.fasterxml.jackson.core:jackson-databind'
 	implementation 'com.singlestore:singlestore-jdbc-client:1.0.1'
+	implementation 'com.amazon.redshift:redshift-jdbc42:2.1.0.9'
 	compileOnly 'org.projectlombok:lombok:1.18.28'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	runtimeOnly 'com.mysql:mysql-connector-j'

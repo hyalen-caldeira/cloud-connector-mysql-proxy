@@ -7,9 +7,304 @@
     * Multiple vendors - Branch name: many-vendors
       * Generic SQL - Branch name: generic-sql-dto
 
-## Postman
-* Header
-  * DB-Type: [MYSQL, SINGLESTORE_DEV, SINGLESTORE_QA, SINGLESTORE_PROD]
+
+# Supported Databases and Configuration Guide
+
+This application is prepared to handle connections to multiple databases dynamically at runtime, supporting the following database types:
+
+## Supported Databases
+
+- **MySQL (DEV, QA, PROD)**: Handled via MySQL JDBC driver.
+- **SingleStore (DEV, QA, PROD)**: Handled via SingleStore JDBC driver.
+- **Amazon Redshift (DEV, QA, PROD)**: Handled via Amazon Redshift JDBC driver.
+- **Other Databases**: Optionally supported for future extensions using the `OTHER_DEV`, `OTHER_QA`, and `OTHER_PROD` configurations.
+
+### Enum Definition for DB Type
+
+The `DBType` enum defines the supported database environments. It is used to determine the correct data source to be used for query execution.
+
+```java
+public enum DBType {
+    MYSQL_DEV,
+    MYSQL_QA,
+    MYSQL_PROD,
+    SINGLESTORE_DEV,
+    SINGLESTORE_QA,
+    SINGLESTORE_PROD,
+    REDSHIFT_DEV,
+    REDSHIFT_QA,
+    REDSHIFT_PROD,
+    OTHER_DEV,
+    OTHER_QA,
+    OTHER_PROD;
+
+    public static DBType fromString(String dbType) {
+        try {
+            return DBType.valueOf(dbType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new UnsupportedOperationException("Unsupported database type: " + dbType);
+        }
+    }
+}
+```
+
+## Postman Header Requirement
+
+To select the correct database connection at runtime, you must pass a custom header `DB-Type` in your HTTP requests, specifying the database environment.
+
+### Example Usage:
+
+In Postman, add the following header to your requests:
+
+- **Key**: `DB-Type`
+- **Value**: `MYSQL_DEV`, `SINGLESTORE_QA`, `REDSHIFT_DEV`, etc., depending on the environment you want to connect to.
+
+### Example Request
+
+```plaintext
+POST /api/execute-query
+Headers:
+  - Content-Type: application/json
+  - DB-Type: MYSQL_DEV
+Body:
+  {
+    "operation": "SELECT",
+    "tableName": "employees",
+    "columns": ["id", "name"],
+    "whereClause": [
+      {
+        "column": "department",
+        "operator": "=",
+        "value": "IT"
+      }
+    ]
+  }
+```
+
+## Data Source Configuration
+
+The application dynamically loads the database configurations based on the defined keys in the `application.properties` file. Each key represents a specific environment, and the corresponding configurations (URL, username, password, and driver class) must be provided.
+
+### Configuration Structure
+
+In the `application.properties` file, the following structure is used:
+
+1. **Define the data source keys**:
+   ```properties
+   datasource.keys=mysql_dev,singlestore_dev,singlestore_qa,redshift_dev
+   ```
+
+2. **Provide a configuration for each key**:
+   Each key in `datasource.keys` must have the following properties:
+    - **url**: The JDBC connection string.
+    - **username**: The database username.
+    - **password**: The database password.
+    - **driver-class-name**: The JDBC driver class name.
+
+### Example Configuration for Multiple Data Sources
+
+```properties
+####### MySQL Data Source Configuration
+datasource.mysql_dev.url=jdbc:mysql://localhost:3306/my-database
+datasource.mysql_dev.username=root
+datasource.mysql_dev.password=
+datasource.mysql_dev.driver-class-name=com.mysql.cj.jdbc.Driver
+
+####### SingleStore Data Source Configuration for local_stations_dev
+datasource.singlestore_dev.url=jdbc:singlestore://host:3306/db_name
+datasource.singlestore_dev.username=user
+datasource.singlestore_dev.password=password
+datasource.singlestore_dev.driver-class-name=com.singlestore.jdbc.Driver
+
+####### SingleStore Data Source Configuration for local_stations_qa
+datasource.singlestore_qa.url=jdbc:singlestore://host:3306/db_name
+datasource.singlestore_qa.username=user
+datasource.singlestore_qa.password=password
+datasource.singlestore_qa.driver-class-name=com.singlestore.jdbc.Driver
+
+####### Amazon Redshift Data Source Configuration
+datasource.redshift_dev.url=jdbc:redshift://dbc:singlestore://host:5439/db_name
+datasource.redshift_dev.username=user
+datasource.redshift_dev.password=password
+datasource.redshift_dev.driver-class-name=com.amazon.redshift.jdbc42.Driver
+```
+
+## Configuration Rule
+
+For each key defined in `datasource.keys`, you **must** provide the following configurations in `application.properties`:
+
+- `datasource.<key>.url`
+- `datasource.<key>.username`
+- `datasource.<key>.password`
+- `datasource.<key>.driver-class-name`
+
+If you define 5 keys in `datasource.keys`, you will need to provide these 4 properties for each of the 5 keys.
+
+### Example:
+
+```properties
+datasource.keys=mysql_dev,mysql_qa,singlestore_dev,singlestore_prod,redshift_dev
+
+# For mysql_dev
+datasource.mysql_dev.url=jdbc:mysql://localhost:3306/dev_database
+datasource.mysql_dev.username=root
+datasource.mysql_dev.password=root_password
+datasource.mysql_dev.driver-class-name=com.mysql.cj.jdbc.Driver
+
+# For singlestore_prod
+datasource.singlestore_prod.url=jdbc:singlestore://some-production-url
+datasource.singlestore_prod.username=prod_user
+datasource.singlestore_prod.password=prod_password
+datasource.singlestore_prod.driver-class-name=com.singlestore.jdbc.Driver
+
+# For redshift_dev
+datasource.redshift_dev.url=jdbc:redshift://some-redshift-url
+datasource.redshift_dev.username=dev_user
+datasource.redshift_dev.password=dev_password
+datasource.redshift_dev.driver-class-name=com.amazon.redshift.jdbc42.Driver
+```
+
+
+# SQLRequestDto Usage Examples
+
+## Overview
+
+The `SQLRequestDto` DTO is used to dynamically build SQL queries for different operations like `SELECT`, `INSERT`, `UPDATE`, `DELETE`, and `UPSERT`. Below are examples of how to use the DTO with corresponding SQL query outputs.
+
+## 1. SELECT Operation
+
+### JSON Request:
+
+```json
+{
+  "operation": "SELECT",
+  "tableName": "MyTable",
+  "columns": ["first_name", "middle_name", "last_name"],
+  "whereClause": [
+    {
+      "column": "id",
+      "operator": "=",
+      "value": "1"
+    }
+  ]
+}
+```
+
+### Generated Query:
+
+```sql
+SELECT id, first_name, middle_name, last_name FROM MyTable WHERE id = '1';
+```
+
+---
+
+## 2. INSERT Operation
+
+### JSON Request:
+
+```json
+{
+  "operation": "INSERT",
+  "tableName": "employees",
+  "columns": ["id", "first_name", "last_name"],
+  "values": [
+    ["1", "John", "Doe"],
+    ["2", "Jane", "Smith"]
+  ]
+}
+```
+
+### Generated Query:
+
+```sql
+INSERT INTO employees (id, first_name, last_name) VALUES ('1', 'John', 'Doe'), ('2', 'Jane', 'Smith');
+```
+
+---
+
+## 3. UPDATE Operation
+
+### JSON Request:
+
+```json
+{
+  "operation": "UPDATE",
+  "tableName": "employees",
+  "columns": ["name", "email"],
+  "values": [["John Doe", "john.doe@example.com"]],
+  "whereClause": [
+    {
+      "column": "id",
+      "operator": "=",
+      "value": "1"
+    }
+  ]
+}
+```
+
+### Generated Query:
+
+```sql
+UPDATE employees SET name = 'John Doe', email = 'john.doe@example.com' WHERE id = '1';
+```
+
+---
+
+## 4. DELETE Operation
+
+### JSON Request:
+
+```json
+{
+  "operation": "DELETE",
+  "tableName": "employees",
+  "whereClause": [
+    {
+      "column": "id",
+      "operator": "=",
+      "value": "1"
+    }
+  ]
+}
+```
+
+### Generated Query:
+
+```sql
+DELETE FROM employees WHERE id = '1';
+```
+
+---
+
+## 5. UPSERT Operation (MySQL Syntax)
+
+### JSON Request:
+
+```json
+{
+  "operation": "UPSERT",
+  "tableName": "employees",
+  "columns": ["id", "name", "email"],
+  "values": [["1", "John Doe", "john.doe@example.com"]],
+  "onDuplicateUpdateColumns": ["name", "email"],
+  "onDuplicateUpdateValues": ["John Doe", "john.doe@example.com"]
+}
+```
+
+### Generated Query:
+
+```sql
+INSERT INTO employees (id, name, email) VALUES ('1', 'John Doe', 'john.doe@example.com') ON DUPLICATE KEY UPDATE name = 'John Doe', email = 'john.doe@example.com';
+```
+
+---
+
+## Conclusion
+
+By using the `SQLRequestDto`, SQL queries can be dynamically generated and executed for a variety of operations without needing to hardcode query strings. Each operation has corresponding fields and flexibility to handle complex scenarios like `UPSERT`.
+
+
+By following this structure, the application will dynamically load and use the correct data source configuration at runtime based on the value of the `DB-Type` header in your requests.
 
 ## Directory Structures
 * config
@@ -90,15 +385,15 @@ http://localhost:8080/api/generic-query/execute-query
 ```
 ### Command Line
 ```bash
-java -jar build/libs/mysql-proxy-0.0.1-SNAPSHOT.jar
+java -jar build/libs/mysql_proxy-0.0.1-SNAPSHOT.jar
 ```
 ### Profile
 ```bash
-java -jar build/libs/mysql-proxy-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+java -jar build/libs/mysql_proxy-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 ```
 ### External Configuration
 ```bash
-java -jar build/libs/mysql-proxy-0.0.1-SNAPSHOT.jar --spring.config.location=classpath:/application.properties,/path/to/external/application.properties
+java -jar build/libs/mysql_proxy-0.0.1-SNAPSHOT.jar --spring.config.location=classpath:/application.properties,/path/to/external/application.properties
 ```
 ### Export Profile
 ```bash 

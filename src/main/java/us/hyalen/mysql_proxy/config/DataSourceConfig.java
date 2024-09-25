@@ -23,7 +23,7 @@ public class DataSourceConfig {
         Map<Object, Object> dataSourceMap = new HashMap<>();
 
         // Get all the data source keys defined in the application.properties
-        String[] dataSourceKeys = env.getProperty("datasources.keys", "").split(",");
+        String[] dataSourceKeys = env.getProperty("datasource.keys", "").split(",");
 
         for (String key : dataSourceKeys) {
             // Trim and skip empty keys
@@ -31,10 +31,10 @@ public class DataSourceConfig {
 
             if (!key.isEmpty()) {
                 // Create the DataSource using the properties
-                String url = env.getProperty("datasources." + key + ".url");
-                String username = env.getProperty("datasources." + key + ".username");
-                String password = env.getProperty("datasources." + key + ".password");
-                String driverClassName = env.getProperty("datasources." + key + ".driver-class-name");
+                String url = env.getProperty("datasource." + key + ".url");
+                String username = env.getProperty("datasource." + key + ".username");
+                String password = env.getProperty("datasource." + key + ".password");
+                String driverClassName = env.getProperty("datasource." + key + ".driver-class-name");
 
                 DataSource dataSource = DataSourceBuilder.create()
                         .url(url)
@@ -59,8 +59,8 @@ public class DataSourceConfig {
         routingDataSource.setTargetDataSources(dataSourceMap);
 
         // Set a default data source if necessary
-        if (dataSourceMap.containsKey("MYSQL"))
-            routingDataSource.setDefaultTargetDataSource(dataSourceMap.get("MYSQL"));
+        if (dataSourceMap.containsKey("MYSQL_DEV"))
+            routingDataSource.setDefaultTargetDataSource(dataSourceMap.get("MYSQL_DEV"));
 
         routingDataSource.afterPropertiesSet(); // Ensure routingDataSource is correctly initialized
 

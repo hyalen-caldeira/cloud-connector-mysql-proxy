@@ -7,11 +7,9 @@ import us.hyalen.mysql_proxy.config.enums.DBType;
 import us.hyalen.mysql_proxy.core.ResourceNotFoundException;
 import us.hyalen.mysql_proxy.core.dto.SQLRequestDto;
 import us.hyalen.mysql_proxy.core.dto.WhereClauseDto;
-import us.hyalen.mysql_proxy.core.dto.ColumnValueDto;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class GenericQueryServiceImpl implements GenericQueryService {
@@ -70,16 +68,16 @@ public class GenericQueryServiceImpl implements GenericQueryService {
             case "SELECT":
                 queryBuilder.append("SELECT ");
 
-                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty()) {
+                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty())
                     queryBuilder.append(String.join(", ", sqlRequestDto.getColumns()));
-                } else {
+                else
                     queryBuilder.append("*");
-                }
 
                 queryBuilder.append(" FROM ").append(sqlRequestDto.getTableName());
 
                 if (sqlRequestDto.getWhereClause() != null && !sqlRequestDto.getWhereClause().isEmpty()) {
                     queryBuilder.append(" WHERE ");
+
                     for (int i = 0; i < sqlRequestDto.getWhereClause().size(); i++) {
                         WhereClauseDto whereClause = sqlRequestDto.getWhereClause().get(i);
                         queryBuilder.append(whereClause.getColumn())
@@ -88,9 +86,9 @@ public class GenericQueryServiceImpl implements GenericQueryService {
                                 .append(" '")
                                 .append(whereClause.getValue())
                                 .append("'");
-                        if (i < sqlRequestDto.getWhereClause().size() - 1) {
+
+                        if (i < sqlRequestDto.getWhereClause().size() - 1)
                             queryBuilder.append(" AND ");
-                        }
                     }
                 }
                 break;
@@ -100,37 +98,151 @@ public class GenericQueryServiceImpl implements GenericQueryService {
                         .append(sqlRequestDto.getTableName())
                         .append(" (");
 
-                // Get unique column names
-                if (sqlRequestDto.getValues() != null && !sqlRequestDto.getValues().isEmpty()) {
-                    List<String> uniqueColumns = sqlRequestDto.getValues().stream()
-                            .map(ColumnValueDto::getColumn)
-                            .distinct()
-                            .collect(Collectors.toList());
-
-                    // Add column names
-                    queryBuilder.append(String.join(", ", uniqueColumns));
+                // Add column names
+                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty()) {
+                    queryBuilder.append(String.join(", ", sqlRequestDto.getColumns()));
                     queryBuilder.append(") VALUES ");
+                }
 
-                    // Group values into rows
-                    int numColumns = uniqueColumns.size();
-                    for (int i = 0; i < sqlRequestDto.getValues().size(); i += numColumns) {
-                        queryBuilder.append("(");
-                        for (int j = 0; j < numColumns; j++) {
-                            String value = sqlRequestDto.getValues().get(i + j).getValue();
-                            queryBuilder.append(value != null ? "'" + value + "'" : "NULL");
-                            if (j < numColumns - 1) {
-                                queryBuilder.append(", ");
-                            }
-                        }
-                        queryBuilder.append(")");
-                        if (i + numColumns < sqlRequestDto.getValues().size()) {
+                // Add values
+                for (int i = 0; i < sqlRequestDto.getValues().size(); i++) {
+                    List<String> rowValues = sqlRequestDto.getValues().get(i);
+                    queryBuilder.append("(");
+
+                    for (int j = 0; j < rowValues.size(); j++) {
+                        String value = rowValues.get(j);
+                        queryBuilder.append(value != null ? "'" + value + "'" : "NULL");
+
+                        if (j < rowValues.size() - 1)
                             queryBuilder.append(", ");
-                        }
+                    }
+
+                    queryBuilder.append(")");
+
+                    if (i < sqlRequestDto.getValues().size() - 1)
+                        queryBuilder.append(", ");
+                }
+                break;
+
+            case "UPDATE":
+                queryBuilder.append("UPDATE ")
+                        .append(sqlRequestDto.getTableName())
+                        .append(" SET ");
+
+                // Add columns to be updated and their new values
+                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty() &&
+                        sqlRequestDto.getValues() != null && sqlRequestDto.getValues().size() == 1) {
+
+                    List<String> valuesToUpdate = sqlRequestDto.getValues().get(0);
+
+                    for (int i = 0; i < sqlRequestDto.getColumns().size(); i++) {
+                        queryBuilder.append(sqlRequestDto.getColumns().get(i))
+                                .append(" = ")
+                                .append(valuesToUpdate.get(i) != null ? "'" + valuesToUpdate.get(i) + "'" : "NULL");
+
+                        if (i < sqlRequestDto.getColumns().size() - 1)
+                            queryBuilder.append(", ");
+                    }
+                }
+
+                // Add WHERE clause if present
+                if (sqlRequestDto.getWhereClause() != null && !sqlRequestDto.getWhereClause().isEmpty()) {
+                    queryBuilder.append(" WHERE ");
+
+                    for (int i = 0; i < sqlRequestDto.getWhereClause().size(); i++) {
+                        WhereClauseDto whereClause = sqlRequestDto.getWhereClause().get(i);
+
+                        queryBuilder.append(whereClause.getColumn())
+                                .append(" ")
+                                .append(whereClause.getOperator())
+                                .append(" '")
+                                .append(whereClause.getValue())
+                                .append("'");
+
+                        if (i < sqlRequestDto.getWhereClause().size() - 1)
+                            queryBuilder.append(" AND ");
                     }
                 }
                 break;
 
-            // Add cases for UPDATE and DELETE here
+            case "DELETE":
+                queryBuilder.append("DELETE FROM ").append(sqlRequestDto.getTableName());
+
+                // Add WHERE clause if present
+                if (sqlRequestDto.getWhereClause() != null && !sqlRequestDto.getWhereClause().isEmpty()) {
+                    queryBuilder.append(" WHERE ");
+
+                    for (int i = 0; i < sqlRequestDto.getWhereClause().size(); i++) {
+                        WhereClauseDto whereClause = sqlRequestDto.getWhereClause().get(i);
+
+                        queryBuilder.append(whereClause.getColumn())
+                                .append(" ")
+                                .append(whereClause.getOperator())
+                                .append(" '")
+                                .append(whereClause.getValue())
+                                .append("'");
+
+                        if (i < sqlRequestDto.getWhereClause().size() - 1)
+                            queryBuilder.append(" AND ");
+                    }
+                }
+                break;
+
+            case "UPSERT":
+                queryBuilder.append("INSERT INTO ")
+                        .append(sqlRequestDto.getTableName())
+                        .append(" (");
+
+                // Add column names
+                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty()) {
+                    queryBuilder.append(String.join(", ", sqlRequestDto.getColumns()));
+                    queryBuilder.append(") VALUES ");
+                }
+
+                // Add values
+                for (int i = 0; i < sqlRequestDto.getValues().size(); i++) {
+                    List<String> rowValues = sqlRequestDto.getValues().get(i);
+                    queryBuilder.append("(");
+
+                    for (int j = 0; j < rowValues.size(); j++) {
+                        String value = rowValues.get(j);
+                        queryBuilder.append(value != null ? "'" + value + "'" : "NULL");
+
+                        if (j < rowValues.size() - 1) {
+                            queryBuilder.append(", ");
+                        }
+                    }
+
+                    queryBuilder.append(")");
+
+                    if (i < sqlRequestDto.getValues().size() - 1) {
+                        queryBuilder.append(", ");
+                    }
+                }
+
+                queryBuilder.append(" ON DUPLICATE KEY UPDATE ");
+
+                // Add columns and values for the update
+                if (sqlRequestDto.getOnDuplicateUpdateColumns() != null &&
+                        !sqlRequestDto.getOnDuplicateUpdateColumns().isEmpty() &&
+                        sqlRequestDto.getOnDuplicateUpdateValues() != null) {
+
+                    List<String> updateColumns = sqlRequestDto.getOnDuplicateUpdateColumns();
+                    List<String> updateValues = sqlRequestDto.getOnDuplicateUpdateValues();
+
+                    for (int i = 0; i < updateColumns.size(); i++) {
+                        queryBuilder.append(updateColumns.get(i))
+                                .append(" = ")
+                                .append(updateValues.get(i) != null ? "'" + updateValues.get(i) + "'" : "NULL");
+
+                        if (i < updateColumns.size() - 1) {
+                            queryBuilder.append(", ");
+                        }
+                    }
+                } else {
+                    throw new IllegalArgumentException("Missing columns/values for ON DUPLICATE KEY UPDATE");
+                }
+                break;
 
             default:
                 throw new UnsupportedOperationException("Unsupported operation: " + sqlRequestDto.getOperation());
