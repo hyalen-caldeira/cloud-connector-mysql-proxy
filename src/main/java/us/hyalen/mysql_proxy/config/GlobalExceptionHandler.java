@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.request.WebRequest;
 import us.hyalen.mysql_proxy.core.BadResponseBodyException;
 import us.hyalen.mysql_proxy.core.ClientException;
+import us.hyalen.mysql_proxy.core.FallbackException;
 import us.hyalen.mysql_proxy.core.ResourceNotFoundException;
 import us.hyalen.mysql_proxy.core.dto.ErrorDto;
 import us.hyalen.mysql_proxy.core.dto.ResponseDto;
@@ -60,6 +61,22 @@ public class GlobalExceptionHandler {
                 ResponseDto.forError(errorDto),
                 HttpStatus.NOT_FOUND);
     }
+
+    @ResponseBody
+    @ExceptionHandler(FallbackException.class)
+    public ResponseEntity<ResponseDto<Void>> handleFallbackException(FallbackException e) {
+        ErrorDto errorDto = new ErrorDto(
+                errorCodeConfig.getFallbackErrorCode(),
+                errorCodeConfig.getFallbackErrorMessage(),
+                e.getMessage()
+        );
+
+        return new ResponseEntity<>(
+                ResponseDto.forError(errorDto),
+                e.getHttpStatus()
+        );
+    }
+
 
     @ExceptionHandler(BadSqlGrammarException.class)
     public ResponseEntity<ResponseDto<Void>> badSqlGrammarException(Exception ex, WebRequest request) {

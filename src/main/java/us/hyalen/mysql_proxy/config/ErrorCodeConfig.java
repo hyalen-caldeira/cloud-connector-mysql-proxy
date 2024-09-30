@@ -33,6 +33,10 @@ public class ErrorCodeConfig {
     private Integer globalErrorHttp;
     private String globalErrorMessage;
 
+    private String fallbackErrorCode;
+    private Integer fallbackErrorHttp;
+    private String fallbackErrorMessage;
+
     public String getBadRequestCode() {
         return badRequestCode;
     }
@@ -175,5 +179,29 @@ public class ErrorCodeConfig {
 
     public void setGlobalErrorMessage(String globalErrorMessage) {
         this.globalErrorMessage = globalErrorMessage;
+    }
+
+    public String getFallbackErrorCode() {
+        return fallbackErrorCode;
+    }
+
+    public void setFallbackErrorCode(String fallbackErrorCode) {
+        this.fallbackErrorCode = fallbackErrorCode;
+    }
+
+    public Integer getFallbackErrorHttp() {
+        return fallbackErrorHttp;
+    }
+
+    public void setFallbackErrorHttp(Integer fallbackErrorHttp) {
+        this.fallbackErrorHttp = fallbackErrorHttp;
+    }
+
+    public String getFallbackErrorMessage() {
+        return fallbackErrorMessage;
+    }
+
+    public void setFallbackErrorMessage(String fallbackErrorMessage) {
+        this.fallbackErrorMessage = fallbackErrorMessage;
     }
 }

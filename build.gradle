@@ -8,7 +8,7 @@ group = 'us.hyalen'
 version = '0.0.1-SNAPSHOT'
 
 java {
-	// Use Java 22 for development
+	// Use Java 8
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(8)
 	}
@@ -25,17 +25,36 @@ repositories {
 }
 
 dependencies {
+	// Spring Boot dependencies
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+
+	// Utility dependencies
 	implementation 'org.apache.commons:commons-lang3:3.12.0'
 	implementation 'com.fasterxml.jackson.core:jackson-databind'
-	implementation 'com.singlestore:singlestore-jdbc-client:1.0.1'
-	implementation 'com.amazon.redshift:redshift-jdbc42:2.1.0.9'
-	compileOnly 'org.projectlombok:lombok:1.18.28'
-	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+	// Database drivers
+	runtimeOnly 'com.singlestore:singlestore-jdbc-client:1.0.1'
+	runtimeOnly 'com.amazon.redshift:redshift-jdbc42:2.1.0.9'
 	runtimeOnly 'com.mysql:mysql-connector-j'
+	runtimeOnly 'com.h2database:h2'
+
+	// HikariCP for connection pooling
+	implementation 'com.zaxxer:HikariCP:3.4.5' // Compatible with Java 8
+
+	// Resilience4j for Circuit Breaker
+	implementation 'io.github.resilience4j:resilience4j-spring-boot2:1.7.1'
+
+	// Lombok
+	compileOnly 'org.projectlombok:lombok:1.18.28'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
-//	annotationProcessor 'org.projectlombok:lombok:1.18.28'
+	// Uncomment if using Lombok annotation processors
+	// annotationProcessor 'org.projectlombok:lombok:1.18.28'
+
+	// Spring Boot Devtools (for development only)
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+	// Testing dependencies
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
