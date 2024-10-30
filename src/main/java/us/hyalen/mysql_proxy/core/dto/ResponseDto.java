@@ -14,7 +14,7 @@ public class ResponseDto<T> extends Dto implements Serializable {
     private static final long serialVersionUID = 1L;
     private ResponseStatus status;
     private T data;
-    private List<ErrorDto> errors;
+    private ErrorDto error;
 
     public ResponseStatus getStatus() {
         return status;
@@ -32,19 +32,27 @@ public class ResponseDto<T> extends Dto implements Serializable {
         this.data = data;
     }
 
-    public List<ErrorDto> getErrors() {
-        return errors;
+    public ErrorDto getError() {
+        return error;
     }
 
-    public void setErrors(List<ErrorDto> errors) {
-        this.errors = errors;
+    public void setError(ErrorDto error) {
+        this.error = error;
     }
 
-    // Manually implement the builder pattern
+    /**
+     * Checks if the response contains an error.
+     * @return true if there is an error, false otherwise.
+     */
+    public boolean isError() {
+        return error != null || ResponseStatus.ERROR.equals(status);
+    }
+
+    // Builder pattern implementation
     public static class Builder<U> {
         private ResponseStatus status;
         private U data;
-        private List<ErrorDto> errors;
+        private ErrorDto error;
 
         public Builder<U> status(ResponseStatus status) {
             this.status = status;
@@ -56,8 +64,8 @@ public class ResponseDto<T> extends Dto implements Serializable {
             return this;
         }
 
-        public Builder<U> errors(List<ErrorDto> errors) {
-            this.errors = errors;
+        public Builder<U> error(ErrorDto error) {
+            this.error = error;
             return this;
         }
 
@@ -65,7 +73,7 @@ public class ResponseDto<T> extends Dto implements Serializable {
             ResponseDto<U> response = new ResponseDto<>();
             response.status = this.status;
             response.data = this.data;
-            response.errors = this.errors;
+            response.error = this.error;
             return response;
         }
     }
@@ -82,27 +90,19 @@ public class ResponseDto<T> extends Dto implements Serializable {
                 .build();
     }
 
-    public static <U> ResponseDto<U> forError(ErrorDto... errors) {
+    public static <U> ResponseDto<U> forError(ErrorDto error) {
         return ResponseDto.<U>builder()
                 .status(ResponseStatus.ERROR)
-                .errors(Arrays.asList(errors))
+                .error(error)
                 .build();
     }
 
-    public static <U> ResponseDto<U> forError(List<ErrorDto> errors) {
-        return forError(errors.toArray(new ErrorDto[errors.size()]));
-    }
-
-    public static <U> ResponseDto<U> forPartial(U data, ErrorDto... errors) {
+    public static <U> ResponseDto<U> forPartial(U data, ErrorDto error) {
         return ResponseDto.<U>builder()
                 .status(ResponseStatus.PARTIAL)
                 .data(data)
-                .errors(Arrays.asList(errors))
+                .error(error)
                 .build();
-    }
-
-    public static <U> ResponseDto<U> forPartial(U data, List<ErrorDto> errors) {
-        return forPartial(data, errors.toArray(new ErrorDto[errors.size()]));
     }
 
     @Override
@@ -110,3 +110,4 @@ public class ResponseDto<T> extends Dto implements Serializable {
         return ToStringBuilder.reflectionToString(this, ToStringStyle.JSON_STYLE);
     }
 }
+

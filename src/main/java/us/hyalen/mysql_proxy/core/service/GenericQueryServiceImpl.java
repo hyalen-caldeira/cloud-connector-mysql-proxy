@@ -7,71 +7,85 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import us.hyalen.mysql_proxy.config.DataSourceContextHolder;
+import us.hyalen.mysql_proxy.config.ErrorCodeConfig;
 import us.hyalen.mysql_proxy.config.enums.DBType;
 import us.hyalen.mysql_proxy.core.FallbackException;
 import us.hyalen.mysql_proxy.core.ResourceNotFoundException;
+import us.hyalen.mysql_proxy.core.dto.ErrorDto;
+import us.hyalen.mysql_proxy.core.dto.ResponseDto;
 import us.hyalen.mysql_proxy.core.dto.SQLRequestDto;
 import us.hyalen.mysql_proxy.core.dto.WhereClauseDto;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeoutException;
 
 @Service
 public class GenericQueryServiceImpl implements GenericQueryService {
+    private final ErrorCodeConfig errorCodeConfig;
     private static final Logger logger = LoggerFactory.getLogger(GenericQueryServiceImpl.class);
     private final JdbcTemplate jdbcTemplate;
     @Autowired
     private Environment env;
 
-    public GenericQueryServiceImpl(JdbcTemplate jdbcTemplate) {
+    public GenericQueryServiceImpl(ErrorCodeConfig errorCodeConfig, JdbcTemplate jdbcTemplate) {
+        this.errorCodeConfig = errorCodeConfig;
         this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
-    @CircuitBreaker(name = "#root.args[1].name()", fallbackMethod = "fallbackExecuteGenericQuery")
+    @CircuitBreaker(
+            name = "#root.args[1].name()",
+            fallbackMethod = "fallbackExecuteGenericQuery")
     @TimeLimiter(name = "#root.args[1].name()") // Dynamic TimeLimiter based on DBType
-    public CompletableFuture<Object> executeGenericQuery(String query, DBType dbType) {
+    public CompletableFuture<ResponseDto<Object>> executeGenericQuery(String query, DBType dbType) {
         logger.info("Executing query: {}", query);
         logger.debug("Using DB type: {}", dbType);
 
-        // Asynchronous execution using CompletableFuture
         return CompletableFuture.supplyAsync(() -> {
             // Set the data source key dynamically based on DBType
             DataSourceContextHolder.setDataSourceKey(dbType.name());
             logger.debug("Data source key set to: {}", dbType.name());
 
-            String normalizedQuery = query.trim().toUpperCase();  // Normalize query
-            normalizedQuery = enforceQueryLimit(normalizedQuery); // Ensure query has a LIMIT clause
+            String normalizedQuery = query.trim();
+            normalizedQuery = enforceQueryLimit(normalizedQuery);
             logger.debug("Normalized query: {}", normalizedQuery);
 
             try {
-                if (normalizedQuery.startsWith("SELECT")) {
+                if (normalizedQuery.toUpperCase().startsWith("SELECT")) {
                     logger.info("Executing SELECT query...");
                     List<Map<String, Object>> result = jdbcTemplate.queryForList(normalizedQuery);
                     logger.debug("Query result: {}", result);
 
                     if (result.isEmpty()) {
                         logger.warn("No data found for the query: {}", normalizedQuery);
-                        throw new ResourceNotFoundException("No data found for the query: " + normalizedQuery);
+                        return ResponseDto.forError(createErrorDto(new ResourceNotFoundException("No data found for the query: " + normalizedQuery)));
                     }
 
                     logger.info("SELECT query executed successfully.");
-                    return result;
-                } else if (normalizedQuery.startsWith("UPDATE") || normalizedQuery.startsWith("DELETE") || normalizedQuery.startsWith("INSERT")) {
+                    return ResponseDto.forSuccess(result);
+                } else if (normalizedQuery.toUpperCase().startsWith("UPDATE") ||
+                        normalizedQuery.toUpperCase().startsWith("DELETE") ||
+                        normalizedQuery.toUpperCase().startsWith("INSERT")) {
                     logger.info("Executing DML query (UPDATE/DELETE/INSERT)...");
                     int rowsAffected = jdbcTemplate.update(normalizedQuery);
                     logger.debug("Rows affected: {}", rowsAffected);
-                    return rowsAffected;
+                    return ResponseDto.forSuccess(rowsAffected);
                 } else {
                     logger.info("Executing DDL or other type of query...");
                     jdbcTemplate.execute(normalizedQuery);
                     logger.info("Query executed successfully.");
-                    return null;
+                    return ResponseDto.forSuccess(null);
                 }
+            } catch (ResourceNotFoundException | BadSqlGrammarException ex) {
+                logger.error("Caught exception: {}", ex.getMessage());
+                return ResponseDto.forError(createErrorDto(ex));
             } finally {
                 logger.debug("Clearing data source key to avoid affecting other operations.");
                 DataSourceContextHolder.clearDataSourceKey();
@@ -80,7 +94,7 @@ public class GenericQueryServiceImpl implements GenericQueryService {
     }
 
     @Override
-    public CompletableFuture<Object> executeGenericQuery(SQLRequestDto sqlRequestDto, DBType dbType) {
+    public CompletableFuture<ResponseDto<Object>> executeGenericQuery(SQLRequestDto sqlRequestDto, DBType dbType) {
         logger.info("Constructing SQL query from DTO.");
 
         // Build the query from the SQLRequestDto
@@ -265,9 +279,22 @@ public class GenericQueryServiceImpl implements GenericQueryService {
         return queryBuilder.toString();
     }
 
-    public CompletableFuture<Object> fallbackExecuteGenericQuery(String query, DBType dbType, Throwable throwable) {
-        String errorMessage = String.format("Service temporarily unavailable for DBType: %s. Cause: %s", dbType, throwable.getMessage());
-        logger.error("Fallback triggered for DBType: {} due to: {}", dbType, throwable.getMessage());
+    public CompletableFuture<Object> fallbackExecuteGenericQuery(String query, DBType dbType, Throwable throwable) throws Exception {
+        Throwable cause = throwable instanceof CompletionException ? throwable.getCause() : throwable;
+
+//        if (cause instanceof ResourceNotFoundException || cause instanceof BadSqlGrammarException) {
+//            // Rethrow the original exception to be handled by the global exception handler
+//                throw (RuntimeException) cause;
+//        } else
+
+        if (cause instanceof TimeoutException) {
+            // Handle TimeoutException
+            throw (Exception) cause;
+        }
+
+        // For other exceptions, you can throw a FallbackException or handle accordingly
+        String errorMessage = String.format("Service temporarily unavailable for DBType: %s. Cause: %s", dbType, cause.getMessage());
+        logger.error("Fallback triggered for DBType: {} due to: {}", dbType, cause.getMessage());
         throw new FallbackException(errorMessage, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
@@ -311,5 +338,26 @@ public class GenericQueryServiceImpl implements GenericQueryService {
 
         // Return the original query if it's not a SELECT or no limit needs to be enforced
         return query;
+    }
+
+    private ErrorDto createErrorDto(Exception ex) {
+        String errorCode;
+        String errorMessage;
+
+        if (ex instanceof ResourceNotFoundException) {
+            errorCode = errorCodeConfig.getNotFoundCode();
+            errorMessage = errorCodeConfig.getNotFoundMessage();
+        } else if (ex instanceof BadSqlGrammarException) {
+            errorCode = errorCodeConfig.getBadSqlGrammarCode();
+            errorMessage = errorCodeConfig.getBadSqlGrammarMessage();
+        } else if (ex instanceof TimeoutException) {
+            errorCode = errorCodeConfig.getTimeoutErrorCode();
+            errorMessage = errorCodeConfig.getTimeoutErrorMessage();
+        } else {
+            errorCode = errorCodeConfig.getGlobalErrorCode();
+            errorMessage = errorCodeConfig.getGlobalErrorMessage();
+        }
+
+        return new ErrorDto(errorCode, errorMessage, ex.getMessage());
     }
 }

@@ -37,6 +37,10 @@ public class ErrorCodeConfig {
     private Integer fallbackErrorHttp;
     private String fallbackErrorMessage;
 
+    private String timeoutErrorCode;
+    private Integer timeoutErrorHttp;
+    private String timeoutErrorMessage;
+
     public String getBadRequestCode() {
         return badRequestCode;
     }
@@ -203,5 +207,29 @@ public class ErrorCodeConfig {
 
     public void setFallbackErrorMessage(String fallbackErrorMessage) {
         this.fallbackErrorMessage = fallbackErrorMessage;
+    }
+
+    public String getTimeoutErrorCode() {
+        return timeoutErrorCode;
+    }
+
+    public void setTimeoutErrorCode(String timeoutErrorCode) {
+        this.timeoutErrorCode = timeoutErrorCode;
+    }
+
+    public Integer getTimeoutErrorHttp() {
+        return timeoutErrorHttp;
+    }
+
+    public void setTimeoutErrorHttp(Integer timeoutErrorHttp) {
+        this.timeoutErrorHttp = timeoutErrorHttp;
+    }
+
+    public String getTimeoutErrorMessage() {
+        return timeoutErrorMessage;
+    }
+
+    public void setTimeoutErrorMessage(String timeoutErrorMessage) {
+        this.timeoutErrorMessage = timeoutErrorMessage;
     }
 }
