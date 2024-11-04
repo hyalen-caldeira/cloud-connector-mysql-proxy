@@ -7,6 +7,10 @@
     * Multiple vendors - Branch name: many-vendors
       * Generic SQL - Branch name: generic-sql-dto
         * Oracle DB - Branch name: oracle-db
+        
+## Stored Procedures (example)
+* CALL TKAPP.TK_INTERFACE_API.GETPAYTRANSLISTBYAPPROVER('206730032', TO_DATE('2023-05-05','YYYY-MM-DD'), 2681801, ?, ?)
+* CALL TKAPP.TK_INTERFACE_API.SAVEEMPTIMECARD('<Timecard xsi:noNamespaceSchemaLocation=\"EMPLOYEE_SAVE_TIMECARD.xsd\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><SSO>206088645</SSO><TimecardDate>2023-12-28</TimecardDate><Shifts><Shift><ShiftNbr>1</ShiftNbr><Activities/></Shift></Shifts><PayTrans><PayTran><TimecardPayTranID/><PayTranID>10293</PayTranID><PayTranCode>PDSICKEMP</PayTranCode><PayTranUnit>8</PayTranUnit><TimecardPayTranCreatedBy>206088645</TimecardPayTranCreatedBy><TimecardPayTranCreateDate>2023-12-28T17:14:01</TimecardPayTranCreateDate><TimecardPayTranUpdateBy>206088645</TimecardPayTranUpdateBy><TimecardPayTranUpdateDate>2023-12-28T17:14:01</TimecardPayTranUpdateDate></PayTran></PayTrans><Notes/></Timecard>', 'PAYTRANS', ?)
 
 
 # Supported Databases and Configuration Guide

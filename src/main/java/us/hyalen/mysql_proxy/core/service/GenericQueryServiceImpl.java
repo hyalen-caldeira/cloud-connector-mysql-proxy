@@ -24,7 +24,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeoutException;
 
 @Service
@@ -66,7 +65,7 @@ public class GenericQueryServiceImpl implements GenericQueryService {
 
                     if (result.isEmpty()) {
                         logger.warn("No data found for the query: {}", normalizedQuery);
-                        return ResponseDto.forError(createErrorDto(new ResourceNotFoundException("No data found for the query: " + normalizedQuery)));
+                        throw new ResourceNotFoundException("No data found for the query: " + normalizedQuery);
                     }
 
                     logger.info("SELECT query executed successfully.");
@@ -96,75 +95,61 @@ public class GenericQueryServiceImpl implements GenericQueryService {
 
     // Add logs and error handling for stored procedure execution
     private ResponseDto<Object> executeStoredProcedure(String query) {
-//        try {
-            logger.debug("Executing stored procedure: {}", query);
-            return jdbcTemplate.execute((Connection conn) -> {
-                try (CallableStatement callableStatement = conn.prepareCall(query)) {
+        logger.debug("Executing stored procedure: {}", query);
+        return jdbcTemplate.execute((Connection conn) -> {
+            try (CallableStatement callableStatement = conn.prepareCall(query)) {
 
-                    int inputParamCount = countInputParameters(query);
-                    int outputCursorCount = countOutputParameters(query);
-                    logger.debug("Total input {} output {} parameters count.", inputParamCount, outputCursorCount);
+                int inputParamCount = countInputParameters(query);
+                int outputCursorCount = countOutputParameters(query);
+                logger.debug("Total input {} output {} parameters count.", inputParamCount, outputCursorCount);
 
-                    // Set input parameters if any (consider '?' placeholders)
-                    // setInputParameters(callableStatement, query);
+                for (int i = 1; i <= outputCursorCount; i++) {
+                    logger.debug("Registering output parameter at index: {}", i);
+                    callableStatement.registerOutParameter(i, Types.REF_CURSOR); // Oracle-specific type
+                }
 
-                    // Assuming output parameters come after all input parameters
-                    // Determine the output parameter indices starting from `inputParamCount + 1`
-//                    for (int i = inputParamCount + 1; i <= inputParamCount + outputCursorCount; i++) {
-//                        logger.debug("Registering output parameter at index: {}", i);
-//                        callableStatement.registerOutParameter(i, Types.REF_CURSOR); // Oracle-specific type
-//                    }
-                    for (int i = 1; i <= outputCursorCount; i++) {
-                        logger.debug("Registering output parameter at index: {}", i);
-                        callableStatement.registerOutParameter(i, Types.REF_CURSOR); // Oracle-specific type
-                    }
+                logger.info("Executing stored procedurea after setting output parameters and before executing: {}", query);
+                callableStatement.execute();
 
-                    logger.info("Executing stored procedurea after setting output parameters and before executing: {}", query);
-                    callableStatement.execute();
+                logger.info("Stored procedure executed successfully.");
 
-                    logger.info("Stored procedure executed successfully.");
+                List<List<Map<String, Object>>> allResults = new ArrayList<>();
 
-                    List<List<Map<String, Object>>> allResults = new ArrayList<>();
+                // Iterate through the output parameters to retrieve each cursor
+                for (int i = 1; i <= outputCursorCount; i++) {
+                    logger.debug("Getting output parameter at index: {}", i);
 
-                    // Iterate through the output parameters to retrieve each cursor
-                    for (int i = 1; i <= outputCursorCount; i++) {
-                        logger.debug("Getting output parameter at index: {}", i);
+                    try (ResultSet resultSet = (ResultSet) callableStatement.getObject(i)) {
+                        if (resultSet != null) {
+                            logger.debug("Found ResultSet for cursor at index: {}", i);
+                            List<Map<String, Object>> result = mapResultSet(resultSet);
+                            logger.debug("Stored procedure result for cursor {}: {}", i, result);
 
-                        try (ResultSet resultSet = (ResultSet) callableStatement.getObject(i)) {
-                            if (resultSet != null) {
-                                logger.debug("Found ResultSet for cursor at index: {}", i);
-                                List<Map<String, Object>> result = mapResultSet(resultSet);
-                                logger.debug("Stored procedure result for cursor {}: {}", i, result);
-
-                                if (result.isEmpty()) {
-                                    logger.warn("No data found for the procedure call cursor at index: {}", i);
-                                }
-
-                                allResults.add(result);
-                            } else {
-                                logger.warn("No ResultSet found for cursor at index: {}", i);
+                            if (result.isEmpty()) {
+                                logger.warn("No data found for the procedure call cursor at index: {}", i);
                             }
+
+                            allResults.add(result);
+                        } else {
+                            logger.warn("No ResultSet found for cursor at index: {}", i);
                         }
                     }
-
-                    // Check if we have any data at all
-                    if (allResults.isEmpty()) {
-                        logger.warn("No data found for the procedure call: {}", query);
-                        return ResponseDto.forError(createErrorDto(new ResourceNotFoundException("No data found for the procedure call: " + query)));
-                    }
-
-                    logger.info("Stored procedure executed successfully with results.");
-                    return ResponseDto.forSuccess(allResults);
-
-                } catch (SQLException e) {
-                    logger.error("Error executing stored procedure: {}", e.getMessage());
-                    throw new RuntimeException("Error executing stored procedure", e);
                 }
-            });
-//        }
-//        catch (RuntimeException e) {
-//            return ResponseDto.forError(createErrorDto(e));
-//        }
+
+                // Check if we have any data at all
+                if (allResults.isEmpty()) {
+                    logger.warn("No data found for the procedure call: {}", query);
+                    return ResponseDto.forError(createErrorDto(new ResourceNotFoundException("No data found for the procedure call: " + query)));
+                }
+
+                logger.info("Stored procedure executed successfully with results.");
+                return ResponseDto.forSuccess(allResults);
+
+            } catch (SQLException e) {
+                logger.error("Error executing stored procedure: {}", e.getMessage());
+                throw new RuntimeException("Error executing stored procedure", e);
+            }
+        });
     }
 
     private int countInputParameters(String query) {
@@ -215,75 +200,11 @@ public class GenericQueryServiceImpl implements GenericQueryService {
         return result;
     }
 
-    private void setInputParameters(CallableStatement callableStatement, String query) throws SQLException {
-        // Extract input parameters from query
-        String[] paramArray = extractParameters(query);
-        logger.debug("Found input parameters: {}", (Object) paramArray);
-
-        for (int i = 0; i < paramArray.length; i++) {
-            logger.debug("Setting input parameter at index: {}", i + 1);
-            logger.debug("Parameter value: {}", paramArray[i]);
-            callableStatement.setObject(i + 1, paramArray[i]);
-        }
-    }
-
-    private String[] extractParameters(String query) {
-        // Extract the substring between the first set of parentheses
-        int startIndex = query.indexOf('(');
-        int endIndex = query.lastIndexOf(')');
-        if (startIndex != -1 && endIndex != -1) {
-            String paramString = query.substring(startIndex + 1, endIndex).trim();
-
-            // Split the parameters by comma, ignoring commas inside function calls or quotes
-            List<String> parameters = new ArrayList<>();
-            StringBuilder currentParam = new StringBuilder();
-            boolean inQuotes = false;
-            int nestedFunctionCount = 0;
-
-            for (char c : paramString.toCharArray()) {
-                if (c == '\'') {
-                    inQuotes = !inQuotes;
-                } else if (!inQuotes) {
-                    if (c == '(') {
-                        nestedFunctionCount++;
-                    } else if (c == ')') {
-                        nestedFunctionCount--;
-                    } else if (c == ',' && nestedFunctionCount == 0) {
-                        parameters.add(currentParam.toString().trim());
-                        currentParam.setLength(0);
-                        continue;
-                    }
-                }
-                currentParam.append(c);
-            }
-
-            // Add the final parameter if available
-            if (currentParam.length() > 0) {
-                parameters.add(currentParam.toString().trim());
-            }
-
-            // Filter out any placeholders (i.e., question marks for output parameters)
-            return parameters.stream().filter(param -> !param.equals("?")).toArray(String[]::new);
-        }
-        return new String[0];
-    }
-
     public CompletableFuture<Object> fallbackExecuteGenericQuery(String query, DBType dbType, Throwable throwable) throws Exception {
-        Throwable cause = throwable instanceof CompletionException ? throwable.getCause() : throwable;
+        String message = throwable.getMessage();
 
-//        if (cause instanceof ResourceNotFoundException || cause instanceof BadSqlGrammarException) {
-//            // Rethrow the original exception to be handled by the global exception handler
-//                throw (RuntimeException) cause;
-//        } else
-
-        if (cause instanceof TimeoutException) {
-            // Handle TimeoutException
-            throw (Exception) cause;
-        }
-
-        // For other exceptions, you can throw a FallbackException or handle accordingly
-        String errorMessage = String.format("Service temporarily unavailable for DBType: %s. Cause: %s", dbType, cause.getMessage());
-        logger.error("Fallback triggered for DBType: {} due to: {}", dbType, cause.getMessage());
+        String errorMessage = String.format("Service temporarily unavailable for DBType: %s. Cause: %s", dbType, message);
+        logger.error("Fallback triggered for DBType: {} due to: {}", dbType, message);
         throw new FallbackException(errorMessage, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
