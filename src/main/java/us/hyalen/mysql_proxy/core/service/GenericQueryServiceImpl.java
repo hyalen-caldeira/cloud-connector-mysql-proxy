@@ -17,9 +17,10 @@ import us.hyalen.mysql_proxy.core.FallbackException;
 import us.hyalen.mysql_proxy.core.ResourceNotFoundException;
 import us.hyalen.mysql_proxy.core.dto.ErrorDto;
 import us.hyalen.mysql_proxy.core.dto.ResponseDto;
-import us.hyalen.mysql_proxy.core.dto.SQLRequestDto;
-import us.hyalen.mysql_proxy.core.dto.WhereClauseDto;
 
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -77,11 +78,11 @@ public class GenericQueryServiceImpl implements GenericQueryService {
                     int rowsAffected = jdbcTemplate.update(normalizedQuery);
                     logger.debug("Rows affected: {}", rowsAffected);
                     return ResponseDto.forSuccess(rowsAffected);
+                } else if (normalizedQuery.toUpperCase().startsWith("CALL")) {
+                    logger.info("Executing stored procedure call using CallableStatement...");
+                    return executeStoredProcedure(normalizedQuery);
                 } else {
-                    logger.info("Executing DDL or other type of query...");
-                    jdbcTemplate.execute(normalizedQuery);
-                    logger.info("Query executed successfully.");
-                    return ResponseDto.forSuccess(null);
+                    throw new BadSqlGrammarException("Unsupported query type", normalizedQuery, new SQLException("Unsupported query type"));
                 }
             } catch (ResourceNotFoundException | BadSqlGrammarException ex) {
                 logger.error("Caught exception: {}", ex.getMessage());
@@ -93,190 +94,178 @@ public class GenericQueryServiceImpl implements GenericQueryService {
         });
     }
 
-    @Override
-    public CompletableFuture<ResponseDto<Object>> executeGenericQuery(SQLRequestDto sqlRequestDto, DBType dbType) {
-        logger.info("Constructing SQL query from DTO.");
+    // Add logs and error handling for stored procedure execution
+    private ResponseDto<Object> executeStoredProcedure(String query) {
+//        try {
+            logger.debug("Executing stored procedure: {}", query);
+            return jdbcTemplate.execute((Connection conn) -> {
+                try (CallableStatement callableStatement = conn.prepareCall(query)) {
 
-        // Build the query from the SQLRequestDto
-        String query = buildQueryFromDto(sqlRequestDto);
-        logger.debug("Constructed query: {}", query);
+                    int inputParamCount = countInputParameters(query);
+                    int outputCursorCount = countOutputParameters(query);
+                    logger.debug("Total input {} output {} parameters count.", inputParamCount, outputCursorCount);
 
-        // Delegate to the existing executeGenericQuery method with the constructed query
-        return executeGenericQuery(query, dbType);
+                    // Set input parameters if any (consider '?' placeholders)
+                    // setInputParameters(callableStatement, query);
+
+                    // Assuming output parameters come after all input parameters
+                    // Determine the output parameter indices starting from `inputParamCount + 1`
+//                    for (int i = inputParamCount + 1; i <= inputParamCount + outputCursorCount; i++) {
+//                        logger.debug("Registering output parameter at index: {}", i);
+//                        callableStatement.registerOutParameter(i, Types.REF_CURSOR); // Oracle-specific type
+//                    }
+                    for (int i = 1; i <= outputCursorCount; i++) {
+                        logger.debug("Registering output parameter at index: {}", i);
+                        callableStatement.registerOutParameter(i, Types.REF_CURSOR); // Oracle-specific type
+                    }
+
+                    logger.info("Executing stored procedurea after setting output parameters and before executing: {}", query);
+                    callableStatement.execute();
+
+                    logger.info("Stored procedure executed successfully.");
+
+                    List<List<Map<String, Object>>> allResults = new ArrayList<>();
+
+                    // Iterate through the output parameters to retrieve each cursor
+                    for (int i = 1; i <= outputCursorCount; i++) {
+                        logger.debug("Getting output parameter at index: {}", i);
+
+                        try (ResultSet resultSet = (ResultSet) callableStatement.getObject(i)) {
+                            if (resultSet != null) {
+                                logger.debug("Found ResultSet for cursor at index: {}", i);
+                                List<Map<String, Object>> result = mapResultSet(resultSet);
+                                logger.debug("Stored procedure result for cursor {}: {}", i, result);
+
+                                if (result.isEmpty()) {
+                                    logger.warn("No data found for the procedure call cursor at index: {}", i);
+                                }
+
+                                allResults.add(result);
+                            } else {
+                                logger.warn("No ResultSet found for cursor at index: {}", i);
+                            }
+                        }
+                    }
+
+                    // Check if we have any data at all
+                    if (allResults.isEmpty()) {
+                        logger.warn("No data found for the procedure call: {}", query);
+                        return ResponseDto.forError(createErrorDto(new ResourceNotFoundException("No data found for the procedure call: " + query)));
+                    }
+
+                    logger.info("Stored procedure executed successfully with results.");
+                    return ResponseDto.forSuccess(allResults);
+
+                } catch (SQLException e) {
+                    logger.error("Error executing stored procedure: {}", e.getMessage());
+                    throw new RuntimeException("Error executing stored procedure", e);
+                }
+            });
+//        }
+//        catch (RuntimeException e) {
+//            return ResponseDto.forError(createErrorDto(e));
+//        }
     }
 
-    private String buildQueryFromDto(SQLRequestDto sqlRequestDto) {
-        StringBuilder queryBuilder = new StringBuilder();
-        logger.info("Building query for operation: {}", sqlRequestDto.getOperation());
+    private int countInputParameters(String query) {
+        // Assuming input parameters are those provided directly in the procedure call.
+        int startIndex = query.indexOf('(');
+        int endIndex = query.indexOf(')');
 
-        switch (sqlRequestDto.getOperation().toUpperCase()) {
-            case "SELECT":
-                logger.debug("Building SELECT query.");
-                queryBuilder.append("SELECT ");
+        if (startIndex != -1 && endIndex != -1) {
+            String paramString = query.substring(startIndex + 1, endIndex);
+            String[] params = paramString.split(",");
+            int inputParamCount = 0;
 
-                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty())
-                    queryBuilder.append(String.join(", ", sqlRequestDto.getColumns()));
-                else
-                    queryBuilder.append("*");
-
-                queryBuilder.append(" FROM ").append(sqlRequestDto.getTableName());
-
-                if (sqlRequestDto.getWhereClause() != null && !sqlRequestDto.getWhereClause().isEmpty()) {
-                    queryBuilder.append(" WHERE ");
-                    for (int i = 0; i < sqlRequestDto.getWhereClause().size(); i++) {
-                        WhereClauseDto whereClause = sqlRequestDto.getWhereClause().get(i);
-                        queryBuilder.append(whereClause.getColumn())
-                                .append(" ")
-                                .append(whereClause.getOperator())
-                                .append(" '")
-                                .append(whereClause.getValue())
-                                .append("'");
-                        if (i < sqlRequestDto.getWhereClause().size() - 1)
-                            queryBuilder.append(" AND ");
-                    }
+            for (String param : params) {
+                param = param.trim();
+                // Assuming '?' represents output params, others are input params
+                if (!param.equals("?")) {
+                    inputParamCount++;
                 }
-                break;
+            }
 
-            case "INSERT":
-                logger.debug("Building INSERT query.");
-                queryBuilder.append("INSERT INTO ")
-                        .append(sqlRequestDto.getTableName())
-                        .append(" (");
+            return inputParamCount;
+        }
+        return 0;
+    }
+    
+    private int countOutputParameters(String query) {
+        return query.length() - query.replace("?", "").length();
+    }
 
-                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty()) {
-                    queryBuilder.append(String.join(", ", sqlRequestDto.getColumns()));
-                    queryBuilder.append(") VALUES ");
-                }
+    private List<Map<String, Object>> mapResultSet(ResultSet resultSet) throws SQLException {
+        List<Map<String, Object>> result = new ArrayList<>();
+        ResultSetMetaData metaData = resultSet.getMetaData();
+        int columnCount = metaData.getColumnCount();
 
-                for (int i = 0; i < sqlRequestDto.getValues().size(); i++) {
-                    List<String> rowValues = sqlRequestDto.getValues().get(i);
-                    queryBuilder.append("(");
-                    for (int j = 0; j < rowValues.size(); j++) {
-                        String value = rowValues.get(j);
-                        queryBuilder.append(value != null ? "'" + value + "'" : "NULL");
 
-                        if (j < rowValues.size() - 1)
-                            queryBuilder.append(", ");
-                    }
-                    queryBuilder.append(")");
-                    if (i < sqlRequestDto.getValues().size() - 1)
-                        queryBuilder.append(", ");
-                }
-                break;
-
-            case "UPDATE":
-                logger.debug("Building UPDATE query.");
-                queryBuilder.append("UPDATE ")
-                        .append(sqlRequestDto.getTableName())
-                        .append(" SET ");
-
-                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty() &&
-                        sqlRequestDto.getValues() != null && sqlRequestDto.getValues().size() == 1) {
-
-                    List<String> valuesToUpdate = sqlRequestDto.getValues().get(0);
-                    for (int i = 0; i < sqlRequestDto.getColumns().size(); i++) {
-                        queryBuilder.append(sqlRequestDto.getColumns().get(i))
-                                .append(" = ")
-                                .append(valuesToUpdate.get(i) != null ? "'" + valuesToUpdate.get(i) + "'" : "NULL");
-
-                        if (i < sqlRequestDto.getColumns().size() - 1)
-                            queryBuilder.append(", ");
-                    }
-                }
-
-                if (sqlRequestDto.getWhereClause() != null && !sqlRequestDto.getWhereClause().isEmpty()) {
-                    queryBuilder.append(" WHERE ");
-                    for (int i = 0; i < sqlRequestDto.getWhereClause().size(); i++) {
-                        WhereClauseDto whereClause = sqlRequestDto.getWhereClause().get(i);
-                        queryBuilder.append(whereClause.getColumn())
-                                .append(" ")
-                                .append(whereClause.getOperator())
-                                .append(" '")
-                                .append(whereClause.getValue())
-                                .append("'");
-
-                        if (i < sqlRequestDto.getWhereClause().size() - 1)
-                            queryBuilder.append(" AND ");
-                    }
-                }
-                break;
-
-            case "DELETE":
-                logger.debug("Building DELETE query.");
-                queryBuilder.append("DELETE FROM ").append(sqlRequestDto.getTableName());
-
-                if (sqlRequestDto.getWhereClause() != null && !sqlRequestDto.getWhereClause().isEmpty()) {
-                    queryBuilder.append(" WHERE ");
-                    for (int i = 0; i < sqlRequestDto.getWhereClause().size(); i++) {
-                        WhereClauseDto whereClause = sqlRequestDto.getWhereClause().get(i);
-                        queryBuilder.append(whereClause.getColumn())
-                                .append(" ")
-                                .append(whereClause.getOperator())
-                                .append(" '")
-                                .append(whereClause.getValue())
-                                .append("'");
-
-                        if (i < sqlRequestDto.getWhereClause().size() - 1)
-                            queryBuilder.append(" AND ");
-                    }
-                }
-                break;
-
-            case "UPSERT":
-                logger.debug("Building UPSERT query.");
-                queryBuilder.append("INSERT INTO ")
-                        .append(sqlRequestDto.getTableName())
-                        .append(" (");
-
-                if (sqlRequestDto.getColumns() != null && !sqlRequestDto.getColumns().isEmpty()) {
-                    queryBuilder.append(String.join(", ", sqlRequestDto.getColumns()));
-                    queryBuilder.append(") VALUES ");
-                }
-
-                for (int i = 0; i < sqlRequestDto.getValues().size(); i++) {
-                    List<String> rowValues = sqlRequestDto.getValues().get(i);
-                    queryBuilder.append("(");
-                    for (int j = 0; j < rowValues.size(); j++) {
-                        String value = rowValues.get(j);
-                        queryBuilder.append(value != null ? "'" + value + "'" : "NULL");
-                        if (j < rowValues.size() - 1) {
-                            queryBuilder.append(", ");
-                        }
-                    }
-                    queryBuilder.append(")");
-                    if (i < sqlRequestDto.getValues().size() - 1) {
-                        queryBuilder.append(", ");
-                    }
-                }
-
-                queryBuilder.append(" ON DUPLICATE KEY UPDATE ");
-                if (sqlRequestDto.getOnDuplicateUpdateColumns() != null &&
-                        !sqlRequestDto.getOnDuplicateUpdateColumns().isEmpty() &&
-                        sqlRequestDto.getOnDuplicateUpdateValues() != null) {
-
-                    List<String> updateColumns = sqlRequestDto.getOnDuplicateUpdateColumns();
-                    List<String> updateValues = sqlRequestDto.getOnDuplicateUpdateValues();
-
-                    for (int i = 0; i < updateColumns.size(); i++) {
-                        queryBuilder.append(updateColumns.get(i))
-                                .append(" = ")
-                                .append(updateValues.get(i) != null ? "'" + updateValues.get(i) + "'" : "NULL");
-
-                        if (i < updateColumns.size() - 1) {
-                            queryBuilder.append(", ");
-                        }
-                    }
-                } else {
-                    throw new IllegalArgumentException("Missing columns/values for ON DUPLICATE KEY UPDATE");
-                }
-                break;
-
-            default:
-                logger.error("Unsupported operation: {}", sqlRequestDto.getOperation());
-                throw new UnsupportedOperationException("Unsupported operation: " + sqlRequestDto.getOperation());
+        logger.debug("Mapping result set with {} columns", columnCount);
+        while (resultSet.next()) {
+            logger.debug("Mapping row...");
+            Map<String, Object> row = new HashMap<>();
+            for (int i = 1; i <= columnCount; i++) {
+                row.put(metaData.getColumnName(i), resultSet.getObject(i));
+            }
+            logger.debug("Mapped row: {}", row);
+            result.add(row);
         }
 
-        return queryBuilder.toString();
+        logger.debug("Mapped result set with {} rows", result.size());
+        return result;
+    }
+
+    private void setInputParameters(CallableStatement callableStatement, String query) throws SQLException {
+        // Extract input parameters from query
+        String[] paramArray = extractParameters(query);
+        logger.debug("Found input parameters: {}", (Object) paramArray);
+
+        for (int i = 0; i < paramArray.length; i++) {
+            logger.debug("Setting input parameter at index: {}", i + 1);
+            logger.debug("Parameter value: {}", paramArray[i]);
+            callableStatement.setObject(i + 1, paramArray[i]);
+        }
+    }
+
+    private String[] extractParameters(String query) {
+        // Extract the substring between the first set of parentheses
+        int startIndex = query.indexOf('(');
+        int endIndex = query.lastIndexOf(')');
+        if (startIndex != -1 && endIndex != -1) {
+            String paramString = query.substring(startIndex + 1, endIndex).trim();
+
+            // Split the parameters by comma, ignoring commas inside function calls or quotes
+            List<String> parameters = new ArrayList<>();
+            StringBuilder currentParam = new StringBuilder();
+            boolean inQuotes = false;
+            int nestedFunctionCount = 0;
+
+            for (char c : paramString.toCharArray()) {
+                if (c == '\'') {
+                    inQuotes = !inQuotes;
+                } else if (!inQuotes) {
+                    if (c == '(') {
+                        nestedFunctionCount++;
+                    } else if (c == ')') {
+                        nestedFunctionCount--;
+                    } else if (c == ',' && nestedFunctionCount == 0) {
+                        parameters.add(currentParam.toString().trim());
+                        currentParam.setLength(0);
+                        continue;
+                    }
+                }
+                currentParam.append(c);
+            }
+
+            // Add the final parameter if available
+            if (currentParam.length() > 0) {
+                parameters.add(currentParam.toString().trim());
+            }
+
+            // Filter out any placeholders (i.e., question marks for output parameters)
+            return parameters.stream().filter(param -> !param.equals("?")).toArray(String[]::new);
+        }
+        return new String[0];
     }
 
     public CompletableFuture<Object> fallbackExecuteGenericQuery(String query, DBType dbType, Throwable throwable) throws Exception {

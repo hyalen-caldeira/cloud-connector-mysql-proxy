@@ -6,6 +6,7 @@
   * Downgraded to Java 8 - Branch name: downgrade
     * Multiple vendors - Branch name: many-vendors
       * Generic SQL - Branch name: generic-sql-dto
+        * Oracle DB - Branch name: oracle-db
 
 
 # Supported Databases and Configuration Guide

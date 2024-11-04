@@ -13,6 +13,9 @@ public enum DBType {
     REDSHIFT_DEV,
     REDSHIFT_QA,
     REDSHIFT_PROD,
+    ORACLE_DEV,
+    ORACLE_QA,
+    ORACLE_PROD,
     OTHER_DEV,
     OTHER_QA,
     OTHER_PROD;

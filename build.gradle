@@ -22,6 +22,10 @@ configurations {
 
 repositories {
 	mavenCentral()
+	// Oracle JDBC drivers might require an additional repository
+	//	maven {
+	//		url "https://repo.maven.apache.org/maven2"
+	//	}
 }
 
 dependencies {
@@ -38,6 +42,7 @@ dependencies {
 	runtimeOnly 'com.amazon.redshift:redshift-jdbc42:2.1.0.9'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	runtimeOnly 'com.h2database:h2'
+	runtimeOnly 'com.oracle.database.jdbc:ojdbc8:19.8.0.0' // Oracle JDBC Driver
 
 	// HikariCP for connection pooling
 	implementation 'com.zaxxer:HikariCP:3.4.5' // Compatible with Java 8
